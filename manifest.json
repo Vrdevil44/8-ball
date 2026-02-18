@@ -1,0 +1,29 @@
+{
+  "name": "8-Ball AR Pool Assistant",
+  "short_name": "8-Ball AR",
+  "description": "Real-time AR pool shot advisor — cue detection, ghost ball, AI shot recommendations.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#050a05",
+  "theme_color": "#050a05",
+  "scope": "./",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "utilities"],
+  "screenshots": [],
+  "prefer_related_applications": false
+}
