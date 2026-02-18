@@ -70,25 +70,42 @@ class Renderer {
     const ctx = this.ctx;
     const W = this.canvas.width / (window.devicePixelRatio || 1);
     const H = this.canvas.height / (window.devicePixelRatio || 1);
+    const cameraMode = state && state.mode === 'camera' && state.cameraActive;
 
     ctx.clearRect(0, 0, W, H);
 
-    // Background
-    ctx.fillStyle = '#0a0e0a';
-    ctx.fillRect(0, 0, W, H);
-
-    this._drawTable();
-    this._drawPockets();
-
-    if (state) {
-      // Overlay: trajectory lines first (under balls)
-      if (state.bestShot && state.showAI) {
-        this._drawShotOverlay(state.bestShot, state.balls);
+    if (cameraMode) {
+      // Camera AR: draw live video frame as background, then overlays only
+      if (state.videoEl) {
+        ctx.drawImage(state.videoEl, 0, 0, W, H);
       }
-      if (state.manualAim) {
-        this._drawManualAim(state.manualAim, state.balls);
+      // Semi-transparent overlay hints (no opaque table)
+      if (state) {
+        if (state.bestShot && state.showAI) {
+          this._drawShotOverlay(state.bestShot, state.balls);
+        }
+        if (state.manualAim) {
+          this._drawManualAim(state.manualAim, state.balls);
+        }
+        this._drawBalls(state.balls, state.selectedBall);
       }
-      this._drawBalls(state.balls, state.selectedBall);
+    } else {
+      // Demo mode: opaque background + full virtual table
+      ctx.fillStyle = '#0a0e0a';
+      ctx.fillRect(0, 0, W, H);
+
+      this._drawTable();
+      this._drawPockets();
+
+      if (state) {
+        if (state.bestShot && state.showAI) {
+          this._drawShotOverlay(state.bestShot, state.balls);
+        }
+        if (state.manualAim) {
+          this._drawManualAim(state.manualAim, state.balls);
+        }
+        this._drawBalls(state.balls, state.selectedBall);
+      }
     }
   }
 
