@@ -14,18 +14,18 @@ class CameraDetector {
     // Scale factor for processing (lower = faster, lower accuracy)
     this.SCALE = 0.35;
 
-    // Table felt HSV thresholds (green felt)
+    // Table felt HSV thresholds — hue is 0–360 throughout this class
     this.TABLE_HSV = {
-      hMin: 35, hMax: 90,
-      sMin: 45, sMax: 255,
-      vMin: 40, vMax: 255,
+      hMin: 70,  hMax: 170,   // green felt (0-360 scale)
+      sMin: 45,  sMax: 255,
+      vMin: 40,  vMax: 255,
     };
 
     // Blue felt alternative
     this.BLUE_HSV = {
-      hMin: 90, hMax: 135,
-      sMin: 50, sMax: 255,
-      vMin: 40, vMax: 255,
+      hMin: 180, hMax: 260,   // blue felt (0-360 scale)
+      sMin: 50,  sMax: 255,
+      vMin: 40,  vMax: 255,
     };
 
     this.feltMode = 'green'; // 'green' | 'blue'
@@ -122,7 +122,7 @@ class CameraDetector {
     return { tableBounds, balls: detectedBalls };
   }
 
-  // ── RGB to HSV (h: 0-180 OpenCV-like scaled, s: 0-255, v: 0-255) ────────
+  // ── RGB to HSV — h: 0–360, s: 0–255, v: 0–255 ───────────────────────────
   _rgbToHsv(r, g, b) {
     const rn = r / 255, gn = g / 255, bn = b / 255;
     const max = Math.max(rn, gn, bn);
@@ -134,12 +134,12 @@ class CameraDetector {
     const v = max;
 
     if (d !== 0) {
-      if (max === rn)      h = (gn - bn) / d + (gn < bn ? 6 : 0);
-      else if (max === gn) h = (bn - rn) / d + 2;
-      else                  h = (rn - gn) / d + 4;
-      h /= 6;
+      if (max === rn)      h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+      else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+      else                  h = ((rn - gn) / d + 4) / 6;
     }
 
+    // Return h in 0–360, s and v in 0–255 (consistent throughout this file)
     return { h: h * 360, s: s * 255, v: v * 255 };
   }
 
@@ -289,15 +289,15 @@ class CameraDetector {
     // High v with low s segments = likely stripe (approximation)
     const isStripe = (v > 170 && s < 80); // rough heuristic
 
-    // Map hue to base ball number (1-7)
+    // Map hue to base ball number (1-7) — all in 0–360 scale
     let base = -1;
-    if (h >= 20  && h <= 42)  base = 1; // Yellow
-    if (h >= 98  && h <= 135) base = 2; // Blue
-    if ((h >= 0 && h <= 12) || (h >= 165 && h <= 180)) base = 3; // Red
-    if (h >= 260 && h <= 310) base = 4; // Purple (in 0-360 range)
-    if (h >= 13  && h <= 25)  base = 5; // Orange
-    if (h >= 80  && h <= 98)  base = 6; // Green
-    if (h >= 300 && h <= 340) base = 7; // Maroon/Pink
+    if (h >= 40  && h <= 70)  base = 1; // Yellow  (40-70°)
+    if (h >= 195 && h <= 255) base = 2; // Blue    (195-255°)
+    if ((h >= 0 && h <= 20) || h >= 340) base = 3; // Red (wraps)
+    if (h >= 260 && h <= 310) base = 4; // Purple  (260-310°)
+    if (h >= 20  && h <= 40)  base = 5; // Orange  (20-40°)
+    if (h >= 85  && h <= 155) base = 6; // Green   (85-155°)
+    if (h >= 310 && h <= 340) base = 7; // Maroon  (310-340°)
 
     if (base < 0) return -1;
 
@@ -312,6 +312,7 @@ class CameraManager {
   constructor() {
     this.stream     = null;
     this.active     = false;
+    this.lastError  = null;
     this.detector   = new CameraDetector();
     this.onDetect   = null; // callback(result)
     this._interval  = null;
@@ -329,11 +330,14 @@ class CameraManager {
       });
       videoEl.srcObject = this.stream;
       await videoEl.play();
-      this.active = true;
+      this.active    = true;
+      this.lastError = null;
       this._startDetection(videoEl);
       return true;
     } catch (err) {
-      console.warn('Camera access denied or unavailable:', err);
+      // Store and log only the error name — avoid exposing stack traces
+      this.lastError = err && err.name ? err.name : 'unknown';
+      console.warn('Camera unavailable:', this.lastError);
       return false;
     }
   }

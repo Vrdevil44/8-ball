@@ -101,10 +101,6 @@ class App {
         }
       }
 
-      if (this.mode === 'camera' && this.camera.active) {
-        this.renderer.drawCameraFrame(this.videoEl);
-      }
-
       this.renderer.render(this._renderState());
     };
     this._rafId = requestAnimationFrame(loop);
@@ -112,12 +108,14 @@ class App {
 
   _renderState() {
     return {
-      balls:       this.balls,
-      bestShot:    this.showAI && !this.renderer.animating ? this.currentShot : null,
+      balls:        this.balls,
+      bestShot:     this.showAI && !this.renderer.animating ? this.currentShot : null,
       selectedBall: this.selectedBall ? this.selectedBall.id : -1,
-      showAI:      this.showAI,
-      manualAim:   this.aimMode ? this.manualAim : null,
-      mode:        this.mode,
+      showAI:       this.showAI,
+      manualAim:    this.aimMode ? this.manualAim : null,
+      mode:         this.mode,
+      cameraActive: this.camera.active,
+      videoEl:      this.videoEl,
     };
   }
 
@@ -167,7 +165,8 @@ class App {
     document.getElementById('btn-toggle-ai').addEventListener('click', () => this._toggleAI());
     document.getElementById('btn-camera').addEventListener('click', () => this._toggleCamera());
     document.getElementById('power-slider').addEventListener('input', (e) => {
-      this.power = parseInt(e.target.value) / 100;
+      const raw = parseFloat(e.target.value);
+      this.power = Number.isFinite(raw) ? Math.max(0.05, Math.min(1, raw / 100)) : 0.55;
       document.getElementById('power-label').textContent = `${Math.round(this.power * 100)}%`;
     });
 
@@ -383,7 +382,15 @@ class App {
     const ok = await this.camera.start(this.videoEl);
 
     if (!ok) {
-      this._setStatus('Camera unavailable. Using demo mode.');
+      const errName = this.camera.lastError || 'unknown';
+      const msg = errName === 'NotAllowedError'
+        ? 'Camera permission denied. Allow camera access in your browser settings.'
+        : errName === 'NotFoundError'
+        ? 'No camera found on this device.'
+        : errName === 'NotReadableError'
+        ? 'Camera is in use by another app. Close it and try again.'
+        : 'Camera unavailable – using demo mode.';
+      this._setStatus(msg);
       return;
     }
 
@@ -408,8 +415,9 @@ class App {
 
   // ── Random layout ────────────────────────────────────────────────────────
   _randomLayout() {
-    const count = parseInt(document.getElementById('ball-count')?.value || '7');
-    this.balls = GameState.makeRandomBalls(Math.max(1, Math.min(15, count)));
+    const raw   = parseInt(document.getElementById('ball-count')?.value || '7', 10);
+    const count = Number.isFinite(raw) ? Math.max(1, Math.min(15, raw)) : 7;
+    this.balls = GameState.makeRandomBalls(count);
     this.gameState = new GameState();
     this.gameState.phase = GAME_PHASE.OPEN_TABLE;
     this.selectedBall = null;
