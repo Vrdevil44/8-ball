@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0e0a" />
+  <meta name="description" content="Real-time AR 8-Ball Pool Assistant – ghost ball aiming, trajectory prediction, shot AI" />
+  <title>8-Ball AR Pool Assistant</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     App Shell
+════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <div class="header-left">
+      <span class="logo">🎱</span>
+      <h1>8-Ball AR Assistant</h1>
+    </div>
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-mode="demo">Demo</button>
+      <button class="tab-btn" data-mode="camera">Camera AR</button>
+    </nav>
+  </header>
+
+  <!-- Main content -->
+  <div id="content">
+
+    <!-- Canvas area -->
+    <section id="canvas-area">
+      <!-- Camera video (hidden until camera mode) -->
+      <video id="camera-feed" autoplay playsinline muted></video>
+      <!-- Main rendering canvas -->
+      <canvas id="main-canvas"></canvas>
+
+      <!-- Floating hint overlay -->
+      <div id="hint-overlay">
+        <span id="status-text">Loading…</span>
+      </div>
+    </section>
+
+    <!-- Side panel -->
+    <aside id="side-panel">
+
+      <!-- Game state card -->
+      <div class="card" id="game-state-card">
+        <h3 class="card-title">Game State</h3>
+        <div class="info-grid">
+          <span class="info-label">Phase</span>
+          <span id="phase-badge" class="phase-badge">BREAK</span>
+
+          <span class="info-label">Turn</span>
+          <span id="current-turn" class="info-value highlight">Player 1</span>
+
+          <span class="info-label">Player 1</span>
+          <span id="p1-group" class="info-value">—</span>
+
+          <span class="info-label">Player 2</span>
+          <span id="p2-group" class="info-value">—</span>
+        </div>
+      </div>
+
+      <!-- AI Shot recommendation card -->
+      <div class="card" id="shot-card">
+        <h3 class="card-title">AI Shot Recommendation</h3>
+        <div id="shot-candidates" class="candidates-label">Analysing…</div>
+        <div class="info-grid">
+          <span class="info-label">Target ball</span>
+          <span id="shot-ball" class="info-value">—</span>
+
+          <span class="info-label">Pocket</span>
+          <span id="shot-pocket" class="info-value">—</span>
+
+          <span class="info-label">AI Score</span>
+          <span id="shot-score" class="info-value">—</span>
+
+          <span class="info-label">Cut angle</span>
+          <span id="shot-cut" class="info-value">—</span>
+
+          <span class="info-label">Difficulty</span>
+          <span id="shot-difficulty" class="info-value">—</span>
+        </div>
+      </div>
+
+      <!-- Controls card -->
+      <div class="card" id="controls-card">
+        <h3 class="card-title">Controls</h3>
+
+        <div class="control-row">
+          <label for="power-slider">Shot power</label>
+          <span id="power-label" class="power-label">55%</span>
+        </div>
+        <input type="range" id="power-slider" min="5" max="100" value="55" />
+
+        <div class="btn-group">
+          <button id="btn-shoot"    class="btn btn-primary">Shoot! ▶</button>
+          <button id="btn-toggle-ai" class="btn btn-accent">AI: ON</button>
+        </div>
+        <div class="btn-group">
+          <button id="btn-rack"     class="btn btn-secondary">Rack Balls</button>
+          <button id="btn-new-game" class="btn btn-secondary">New Game</button>
+        </div>
+
+        <div class="control-row" style="margin-top:8px">
+          <label for="ball-count">Random balls</label>
+          <input type="number" id="ball-count" min="2" max="15" value="7" class="num-input" />
+        </div>
+        <button id="btn-random" class="btn btn-secondary full-width">Random Layout</button>
+
+        <!-- Camera controls (hidden in demo mode) -->
+        <div id="camera-controls" style="display:none; margin-top:12px; border-top:1px solid #2a3a2a; padding-top:12px;">
+          <button id="btn-camera" class="btn btn-accent full-width">Start Camera</button>
+          <div class="control-row" style="margin-top:8px">
+            <label for="felt-select">Felt colour</label>
+            <select id="felt-select" class="sel-input">
+              <option value="green">Green</option>
+              <option value="blue">Blue</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Balls remaining card -->
+      <div class="card" id="balls-card">
+        <h3 class="card-title">Balls on Table</h3>
+        <div id="balls-remaining" class="balls-grid"></div>
+      </div>
+
+      <!-- How to use card -->
+      <div class="card" id="help-card">
+        <h3 class="card-title">How to Use</h3>
+        <ul class="help-list">
+          <li><b>Click "Shoot!"</b> to execute the AI's best shot</li>
+          <li><b>Click a ball</b> to select it as the target</li>
+          <li><b>Click a pocket</b> to set a manual shot line</li>
+          <li><b>Drag from cue ball</b> to aim manually</li>
+          <li><b>Camera AR</b> – point your phone at a real table</li>
+        </ul>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Bottom status bar -->
+  <footer id="footer">
+    <span id="footer-status">Ready</span>
+    <span class="footer-credit">Built with Canvas 2D · No dependencies</span>
+  </footer>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     Scripts (order matters – no bundler)
+════════════════════════════════════════════════════ -->
+<script src="js/constants.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/gameState.js"></script>
+<script src="js/shotEngine.js"></script>
+<script src="js/detection.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
