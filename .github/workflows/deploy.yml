@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+# Trigger on push to our development branch and manual dispatch
+on:
+  push:
+    branches:
+      - "claude/deploy-github-pages-hwSvc"
+  workflow_dispatch:
+
+# Allow only one deployment at a time
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# Required permissions for Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # No build step required – pure HTML/CSS/JS, no bundler needed.
+      # GitHub Pages serves the static files directly.
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Deploy the repo root (index.html, css/, js/ directories)
+          path: "."
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
