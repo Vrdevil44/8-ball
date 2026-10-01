@@ -330,9 +330,22 @@ class App {
   // ── Shot execution ────────────────────────────────────────────────────────
   _executeRecommendedShot() {
     if (this.renderer.animating) return;
-    if (!this.currentShot) { this._setStatus('No shot found. Calibrate table or use demo mode.'); return; }
     const cue = this.balls.find(b => b.id === 0);
     if (!cue) return;
+
+    if (!this.currentShot) {
+      // No AI shot available (e.g. tight rack on the break) —
+      // fall back to a straight break shot at the head ball.
+      const head = this.balls
+        .filter(b => b.id !== 0 && !b.pocketed)
+        .sort((a, b) => a.id - b.id)[0];
+      if (!head) { this._setStatus('No balls left. Start a new game.'); return; }
+      this._recordShotStart();
+      const vel = shotEngine.aimToVelocity(cue, { x: head.x, y: head.y }, 1.0);
+      this._setStatus('Break!');
+      this._runShot(vel.vx, vel.vy);
+      return;
+    }
 
     this._recordShotStart();
     const vel = shotEngine.shotVelocity(cue, this.currentShot, this.power);
