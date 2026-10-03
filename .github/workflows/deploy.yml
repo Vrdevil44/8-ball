@@ -35,6 +35,7 @@ jobs:
           cp index.html _site/
           cp manifest.json sw.js _site/
           cp icon-192.png icon-512.png _site/
+          cp og-image.png _site/
           cp -r css  _site/css
           cp -r js   _site/js
           # Prevent Jekyll from processing files starting with underscore
