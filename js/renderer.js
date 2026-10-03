@@ -13,7 +13,10 @@ class ARRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx    = canvas.getContext('2d');
-    this.dpr    = window.devicePixelRatio || 1;
+    this.dprCap = 2;                 // lowered automatically if frames drop
+    this.dpr    = Math.min(window.devicePixelRatio || 1, this.dprCap);
+    this._lastT = 0;
+    this._slow  = 0;
 
     // Virtual-table coordinate transform (demo mode)
     this._tf    = new CoordTransform();
@@ -34,7 +37,7 @@ class ARRenderer {
   get H() { return this.canvas.height / this.dpr; }
 
   _resize() {
-    this.dpr = window.devicePixelRatio || 1;
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
     const w = this.canvas.clientWidth  || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.canvas.width  = w * this.dpr;
@@ -43,8 +46,25 @@ class ARRenderer {
     this._tf.fit(w, h);
   }
 
+  // Frame-rate guard: if frames stay slow (>~28 ms, i.e. <36 fps) for half a
+  // second, step the backing-store resolution down (2 → 1.5 → 1). Ignores the
+  // first frames and frames after tab-switches (gaps > 250 ms).
+  _adaptResolution() {
+    const now = performance.now();
+    const dt = now - this._lastT;
+    this._lastT = now;
+    if (dt > 250 || dt <= 0) { this._slow = 0; return; }
+    this._slow = dt > 28 ? this._slow + 1 : Math.max(0, this._slow - 1);
+    if (this._slow >= 30 && this.dprCap > 1) {
+      this.dprCap = Math.max(1, this.dprCap - 0.5);
+      this._slow = 0;
+      this._resize();
+    }
+  }
+
   // ── Master render ────────────────────────────────────────────────────────
   render(state) {
+    this._adaptResolution();
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
 

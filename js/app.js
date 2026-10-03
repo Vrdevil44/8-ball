@@ -86,9 +86,12 @@ class App {
     };
     this.arSession.onError = (err) => {
       const msgs = {
-        'NotAllowedError':   'Camera permission denied.',
-        'NotFoundError':     'No camera found.',
-        'NotReadableError':  'Camera in use by another app.',
+        'NotAllowedError':   'Camera permission denied. Allow camera access in your browser settings, then tap Start AR again.',
+        'SecurityError':     'Camera permission denied. Allow camera access in your browser settings, then tap Start AR again.',
+        'NotFoundError':     'No camera found on this device.',
+        'NotReadableError':  'Camera is in use by another app.',
+        'insecure-context':  'Camera needs a secure (HTTPS) connection.',
+        'no-media-devices':  'This browser does not support camera access.',
         'camera-error':      'Camera unavailable.',
         'homography-degenerate': 'Corner points too close. Please re-tap.',
       };
@@ -107,6 +110,7 @@ class App {
     this._bindEvents();
     this._startRenderLoop();
     this._updateHUD();
+    this._showHintOnce();
 
     // Check WebXR availability asynchronously, show button if supported
     ARSession.isXRSupported().then(supported => {
@@ -244,7 +248,9 @@ class App {
 
   // ── Ball tracker updates ──────────────────────────────────────────────────
   _onTrackUpdate(states) {
-    // Live update ball positions during shot flight
+    // Live update ball positions during shot flight (the simulation owns the
+    // balls while its animation runs)
+    if (this.renderer.animating) return;
     for (const st of states) {
       const ball = this.balls.find(b => b.id === st.id);
       if (ball && st.moving) {
@@ -254,35 +260,9 @@ class App {
     }
   }
 
-  _onTrackDone(states) {
-    // Shot tracking finished → record outcome
-    const pocketed = new Set(
-      states.filter(s => s.pocketed).map(s => s.id)
-    );
-    const cuePocketed = pocketed.has(0);
-
-    // Record outcome in training DB
-    if (this._pendingShotId >= 0) {
-      const duration = Date.now() - this._shotStartTime;
-      const intended = this.currentShot?.objBall?.id;
-      const success  = intended !== undefined && pocketed.has(intended);
-      trainingDB.recordOutcome(
-        this._pendingShotId,
-        { pocketed: [...pocketed], cuePocketed, success, duration },
-        states
-      ).catch(() => {});
-      this._pendingShotId = -1;
-    }
-
-    this.gameState.processShot(pocketed, cuePocketed);
-    if (cuePocketed) {
-      const cue = this.balls.find(b => b.id === 0);
-      if (cue) { cue.pocketed = false; cue.x = C.HEAD_SPOT.x; cue.y = C.HEAD_SPOT.y; cue.vx = 0; cue.vy = 0; }
-    }
-
-    this._computeBestShots();
-    this._updateHUD();
-    this._setStatus(this.gameState.message);
+  _onTrackDone() {
+    // Rules and training outcomes are resolved once, from the simulated shot
+    // (_onShotComplete). The camera tracker only drives live positions.
   }
 
   _onAnimationEnd() {
@@ -300,7 +280,10 @@ class App {
     const cuePocketed = result.pocketed.has(0);
     this.gameState.processShot(result.pocketed, cuePocketed);
 
-    if (cuePocketed) {
+    if (this.gameState.reRack) {
+      this.balls = GameState.makeRackBalls();
+      this.selectedBall = null;
+    } else if (cuePocketed) {
       const cue = this.balls.find(b => b.id === 0);
       if (cue) { cue.pocketed = false; cue.x = C.HEAD_SPOT.x; cue.y = C.HEAD_SPOT.y; cue.vx = 0; cue.vy = 0; }
     }
@@ -376,7 +359,25 @@ class App {
     });
   }
 
+  _dismissHint() {
+    const el = document.getElementById('first-hint');
+    if (!el || el.classList.contains('hidden')) return;
+    el.classList.add('hidden');
+    try { localStorage.setItem('8ball-hint-seen', '1'); } catch { /* private mode */ }
+  }
+
+  _showHintOnce() {
+    const el = document.getElementById('first-hint');
+    if (!el) return;
+    let seen = false;
+    try { seen = localStorage.getItem('8ball-hint-seen') === '1'; } catch { /* private mode */ }
+    if (seen) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    setTimeout(() => this._dismissHint(), 8000);
+  }
+
   _recordShotStart() {
+    this._dismissHint();
     this._shotStartTime = Date.now();
     const cue = this.balls.find(b => b.id === 0);
     trainingDB.startShot(
@@ -388,6 +389,10 @@ class App {
 
   // ── AR mode toggle ────────────────────────────────────────────────────────
   async _startAR() {
+    // Pre-flight: fail with a clear message instead of a blank video
+    if (!window.isSecureContext) { this.arSession.onError('insecure-context'); return; }
+    if (!navigator.mediaDevices?.getUserMedia) { this.arSession.onError('no-media-devices'); return; }
+
     this._setStatus('Starting camera…');
     this.mode = 'ar';
     this._updateModeBtns();
@@ -401,7 +406,7 @@ class App {
       // Fallback to getUserMedia
       const camOk = await this.arSession.startCamera();
       if (!camOk) {
-        this._setStatus('Camera unavailable. Using demo mode.');
+        // keep the specific reason set by onError; just return to demo mode
         this._stopAR();
         return;
       }
@@ -502,6 +507,7 @@ class App {
 
   // ── Pointer handling (demo mode) ──────────────────────────────────────────
   _handlePointerDown(cx, cy) {
+    this._dismissHint();
     this.pointerDown = true;
     if (this.renderer.animating) return;
 
@@ -590,16 +596,16 @@ class App {
     this.canvas.addEventListener('touchstart', onDown, { passive: false });
     this.canvas.addEventListener('touchmove',  onMove, { passive: false });
     this.canvas.addEventListener('touchend',   onUp,   { passive: false });
+    this.canvas.addEventListener('touchcancel', () => { this.aimMode = false; this.manualAim = null; this.pointerDown = false; });
+    window.addEventListener('mouseup', () => { if (this.aimMode) this._handlePointerUp(); });
 
     // Mode buttons
     document.getElementById('btn-ar')?.addEventListener('click', () => {
       if (this.mode === 'ar') this._stopAR(); else this._startAR();
     });
     document.getElementById('btn-xr')?.addEventListener('click', async () => {
-      this.mode = 'ar';
-      this.videoEl.style.display = 'block';
-      const ok = await this.arSession.startXR(this.overlayRoot);
-      if (!ok) this._startAR(); // fallback
+      if (this.mode === 'ar') return;
+      this._startAR(); // tries WebXR first, then falls back to the camera
     });
 
     // AR controls
@@ -667,11 +673,10 @@ class App {
 
     // Panel toggle (mobile)
     document.getElementById('btn-panel-toggle')?.addEventListener('click', () => {
-      document.getElementById('info-panel').classList.toggle('panel-open');
+      const open = document.getElementById('info-panel').classList.toggle('open');
+      document.getElementById('btn-panel-toggle').setAttribute('aria-expanded', String(open));
     });
 
-    // Window resize
-    window.addEventListener('resize', () => this.renderer._resize());
   }
 
   // ── UI updates ────────────────────────────────────────────────────────────
@@ -731,6 +736,7 @@ class App {
 
     // AR HUD badge
     const badge = document.getElementById('shot-badge');
+    if (badge) badge.classList.toggle('visible', !!shot && this.mode === 'ar');
     if (badge && shot) {
       badge.querySelector('.badge-ball').textContent  = `#${shot.objBall.info?.name || shot.objBall.id}`;
       badge.querySelector('.badge-pocket').textContent = shot.pocket.label;

@@ -17,7 +17,7 @@
   --amber:     #ffca28;
   --red:       #ff5252;
   --text:      #e8f5e9;
-  --text-dim:  rgba(232, 245, 233, 0.55);
+  --text-dim:  rgba(232, 245, 233, 0.78);
   --border:    rgba(0, 230, 118, 0.18);
   --glow:      0 0 12px rgba(0, 230, 118, 0.45);
 
@@ -42,10 +42,14 @@ html, body {
   font-size:   15px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* manipulation = no double-tap zoom, pinch-zoom still allowed (a11y) */
   touch-action: manipulation;
-  /* Prevent iOS bounce / overscroll */
+  /* Prevent pull-to-refresh / scroll bounce */
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  -webkit-touch-callout: none;
 }
+html { position: fixed; inset: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AR Layer — full-screen video + canvas stack
@@ -73,7 +77,9 @@ html, body {
   width:  100%;
   height: 100%;
   z-index: 2;
-  pointer-events: none;
+  /* The canvas is the aiming surface: it receives drag/tap input */
+  pointer-events: auto;
+  touch-action: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -155,6 +161,7 @@ html, body {
   transition: opacity .15s, transform .1s;
   -webkit-tap-highlight-color: transparent;
 }
+.hud-btn { min-height: 40px; }
 .hud-btn:active { transform: scale(0.93); opacity: .8; }
 
 .hud-btn.primary {
@@ -355,9 +362,10 @@ html, body {
 /* Small buttons */
 .sm-btn {
   flex: 1;
-  padding: 8px 10px;
+  padding: 10px;
+  min-height: 40px;
   border-radius: var(--r-sm);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.06);
@@ -413,6 +421,8 @@ html, body {
   transition: transform .35s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .info-panel.open { transform: translateY(0); }
+.info-panel { overscroll-behavior: contain; visibility: hidden; transition: transform .35s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s .35s; }
+.info-panel.open { visibility: visible; transition: transform .35s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s; }
 
 /* Drag handle */
 .panel-handle {
@@ -503,37 +513,13 @@ html, body {
 .status-card  { padding: 10px 14px; }
 .status-full  { font-size: 13px; color: var(--text-dim); }
 
-/* ── Calibration toast ────────────────────────────────────────────────────── */
-#calibration-toast {
-  position: fixed;
-  left:   50%;
-  bottom: calc(var(--sab) + 170px);
-  transform: translateX(-50%);
-  z-index: 15;
-
-  background: rgba(255, 202, 40, 0.15);
-  border: 1px solid var(--amber);
-  border-radius: var(--r);
-  color: var(--amber);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px 18px;
-  text-align: center;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity .3s;
-}
-#calibration-toast.visible { opacity: 1; }
-
 /* ── Scrollbar (panel) ────────────────────────────────────────────────────── */
 .info-panel::-webkit-scrollbar       { width: 4px; }
 .info-panel::-webkit-scrollbar-track { background: transparent; }
 .info-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 /* ── Utilities ────────────────────────────────────────────────────────────── */
-.hidden  { display: none !important; }
-.visible { display: block !important; }
+.hidden { display: none !important; }
 
 /* ── Focus ring ───────────────────────────────────────────────────────────── */
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
@@ -568,4 +554,48 @@ html, body {
     width:     480px;
   }
   .info-panel.open { transform: translateX(-50%) translateY(0); }
+}
+
+/* ── First-load hint ──────────────────────────────────────────────────────── */
+.first-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sab) + 200px);
+  transform: translateX(-50%);
+  z-index: 12;
+  max-width: calc(100vw - 24px);
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid var(--green);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* sm-btn selects/number inputs share the row */
+.sm-input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 10px; text-align: center;
+  border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06); color: var(--text); font-size: 16px; /* >=16px stops iOS focus-zoom */
+}
+select.sel-input { font-size: 16px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Narrow phones (≤ 400px, incl. 360px Androids)
+══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 400px) {
+  #top-hud { gap: 6px; padding-left: calc(var(--sal) + 8px); padding-right: calc(var(--sar) + 8px); }
+  .hud-btn { padding: 7px 10px; }
+  .status-text { font-size: 11px; }
+  /* Status line drops to its own row so errors (e.g. camera denied) stay readable */
+  #top-hud { flex-wrap: wrap; }
+  .hud-centre { order: 3; flex: 1 1 100%; }
+  .status-text { white-space: normal; }
+  .shot-badge, .stick-badge { top: calc(var(--sat) + 84px); }
+  .bottom-bar { gap: 8px; padding: 10px calc(var(--sar) + 10px) calc(var(--sab) + 10px) calc(var(--sal) + 10px); }
+  .action-btn { padding: 14px 6px; font-size: 14px; }
+  .shot-badge { padding: 8px 10px; min-width: 104px; }
 }
