@@ -30,6 +30,10 @@ class ARRenderer {
 
     this._resize();
     window.addEventListener('resize', () => this._resize());
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => this._resize());
+      document.querySelectorAll('#top-hud, .bottom-bar').forEach(el => ro.observe(el));
+    }
     window.addEventListener('orientationchange', () => setTimeout(() => this._resize(), 200));
   }
 
@@ -43,7 +47,13 @@ class ARRenderer {
     this.canvas.width  = w * this.dpr;
     this.canvas.height = h * this.dpr;
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this._tf.fit(w, h);
+    // Keep the table clear of the fixed HUD / control bar so cushions and
+    // pockets stay visible and tappable.
+    const top = document.getElementById('top-hud');
+    const bar = [...document.querySelectorAll('.bottom-bar')].find(el => getComputedStyle(el).display !== 'none');
+    const insetTop = top ? Math.max(0, top.getBoundingClientRect().bottom) : 0;
+    const insetBottom = bar ? Math.max(0, h - bar.getBoundingClientRect().top) : 0;
+    this._tf.fit(w, h, 40, insetTop, insetBottom);
   }
 
   // Frame-rate guard: if frames stay slow (>~28 ms, i.e. <36 fps) for half a
@@ -673,11 +683,12 @@ class ARRenderer {
 // ── CoordTransform (keep for demo mode) ──────────────────────────────────────
 class CoordTransform {
   constructor() { this.scale = 1; this.offsetX = 0; this.offsetY = 0; }
-  fit(canvasW, canvasH, padding = 40) {
-    const availW = canvasW - padding * 2, availH = canvasH - padding * 2;
-    this.scale   = Math.min(availW / C.TABLE_W, availH / C.TABLE_H);
+  fit(canvasW, canvasH, padding = 40, insetTop = 0, insetBottom = 0) {
+    const availW = canvasW - padding * 2;
+    const availH = canvasH - insetTop - insetBottom - padding * 2;
+    this.scale   = Math.min(availW / C.TABLE_W, Math.max(availH, 1) / C.TABLE_H);
     this.offsetX = (canvasW - C.TABLE_W * this.scale) / 2;
-    this.offsetY = (canvasH - C.TABLE_H * this.scale) / 2;
+    this.offsetY = insetTop + (canvasH - insetTop - insetBottom - C.TABLE_H * this.scale) / 2;
   }
   tx(x) { return x * this.scale + this.offsetX; }
   ty(y) { return y * this.scale + this.offsetY; }
