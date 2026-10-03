@@ -540,7 +540,13 @@ class App {
       const ghost = shotEngine.ghostBall(this.selectedBall, pocket);
       const cbPath = shotEngine.cueBallPath(cue, ghost, this.selectedBall, 'natural');
       const obPath = shotEngine.objBallPath(this.selectedBall, pocket);
-      this.currentShot = { objBall: this.selectedBall, pocket, ghost, cbPath, obPath, cut: 0, score: 0, difficulty: null };
+      this.currentShot = {
+        objBall: this.selectedBall, pocket, ghost, cbPath, obPath,
+        cut: 0, score: 0, difficulty: null,
+        suggestedPower: suggestedPower({ objBall: this.selectedBall, pocket, ghost, cut: 0 }, cue),
+      };
+      this._updateShotPanel();
+      this._setStatus(`Aim set: ${this.selectedBall.info?.name} → ${pocket.label}`);
     }
   }
 
@@ -662,13 +668,21 @@ class App {
     });
 
     document.getElementById('btn-export')?.addEventListener('click', async () => {
-      const json = await trainingDB.exportJSON();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = '8ball_training.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      try {
+        const json = await trainingDB.exportJSON();
+        const blob = new Blob([json], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = '8ball_training.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const n = JSON.parse(json).length;
+        this._setStatus(`Training data exported (${n} record${n === 1 ? '' : 's'})`);
+      } catch (err) {
+        this._setStatus('Export failed. Try again.');
+      }
     });
 
     // Panel toggle (mobile)
