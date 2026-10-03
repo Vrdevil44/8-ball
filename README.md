@@ -4,6 +4,18 @@ A real-time pool coaching web app that runs entirely in the browser — no serve
 
 **Live demo:** https://vrdevil44.github.io/8-ball/
 
+![AI shot recommendation overlay](docs/screenshots/hero-ai-overlay.png)
+![Ghost-ball guideline](docs/screenshots/ghost-ball-guideline.png)
+![Demo](docs/screenshots/demo.gif)
+
+<details>
+<summary>More screenshots</summary>
+
+![Mid-game](docs/screenshots/mid-game.png)
+![Info panel](docs/screenshots/info-panel.png)
+
+</details>
+
 ## Play it now
 
 The site opens straight into **Demo mode**: a virtual pool table, no camera needed. It works on desktop and mobile.
@@ -24,7 +36,7 @@ The site opens straight into **Demo mode**: a virtual pool table, no camera need
 - **AI shot recommendation** — scores every possible shot by pocketability, path clearance, position play and scratch risk
 - **Full trajectory overlay** — cue-ball path, object-ball path, cushion reflections
 - **8-ball game state machine** — break → open table → group assignment → 8-ball phase → win/loss
-- **Camera AR mode** (optional, "📷 Start AR") — uses `getUserMedia` + Canvas 2D colour segmentation to detect a real pool table and balls, with cue-stick detection; WebXR supported where available
+- **Camera overlay mode** (optional, "📷 Start AR", experimental) — points your phone camera at a real table and overlays detection graphics via `getUserMedia` + Canvas 2D colour segmentation (table/ball detection + cue-stick detection); WebXR where available. This is a detection overlay today, not full AR coaching — that's the roadmap.
 - **PWA** — installable, works offline after first load (service worker)
 - **Training log** — shot history stored locally in IndexedDB, exportable as JSON
 
