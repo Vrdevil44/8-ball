@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#050a05" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="8-Ball AR" />
   <meta name="description" content="Real-time AR 8-Ball Pool Assistant — cue detection, ghost ball, shot AI" />
@@ -24,7 +25,7 @@
   <video id="camera-feed" autoplay playsinline muted></video>
 
   <!-- Drawing canvas – full screen, sits on top of video -->
-  <canvas id="ar-canvas"></canvas>
+  <canvas id="ar-canvas" role="img" aria-label="Pool table. Drag from the cue ball to aim and release to shoot."></canvas>
 
   <!-- ── Top HUD strip ── -->
   <header id="top-hud">
@@ -33,13 +34,13 @@
       <span id="ar-status-badge" class="ar-status-badge ar-status-idle">○ Off</span>
     </div>
     <div class="hud-centre">
-      <span id="ar-status-text" class="status-text">Ready</span>
+      <span id="ar-status-text" class="status-text" role="status" aria-live="polite">Ready</span>
     </div>
     <div class="hud-right">
       <!-- Mode buttons -->
-      <button id="btn-ar"  class="hud-btn primary">📷 Start AR</button>
-      <button id="btn-xr"  class="hud-btn accent"  style="display:none">✦ WebXR</button>
-      <button id="btn-panel-toggle" class="hud-btn ghost" aria-label="Info panel">☰</button>
+      <button id="btn-ar"  class="hud-btn primary" aria-label="Start or stop camera AR mode">📷 Start AR</button>
+      <button id="btn-xr"  class="hud-btn accent"  style="display:none" aria-label="Start WebXR augmented reality">✦ WebXR</button>
+      <button id="btn-panel-toggle" class="hud-btn ghost" aria-label="Toggle info panel" aria-expanded="false" aria-controls="info-panel">☰</button>
     </div>
   </header>
 
@@ -60,7 +61,7 @@
   </div>
 
   <!-- ── Cue stick detection badge ── -->
-  <div id="stick-info" class="stick-badge" style="display:none">
+  <div id="stick-info" class="stick-badge" style="display:none" aria-live="off">
     🎯 Cue 0%
   </div>
 
@@ -74,17 +75,17 @@
   <div id="ar-controls" class="bottom-bar" style="display:none">
     <div class="power-row">
       <span class="power-icon">⚡</span>
-      <input type="range" id="power-slider-ar" min="5" max="100" value="55" class="power-slider" />
+      <input type="range" id="power-slider-ar" aria-label="Shot power" min="5" max="100" value="55" class="power-slider" />
       <span id="power-label-ar" class="power-val">55%</span>
     </div>
     <div class="action-row">
       <button id="btn-calibrate"   class="action-btn secondary">Calibrate</button>
-      <button id="btn-shoot-ar"    class="action-btn primary">▶ Shoot!</button>
+      <button id="btn-shoot-ar"    class="action-btn primary" aria-label="Shoot the recommended shot">▶ Shoot!</button>
       <button id="btn-recalibrate" class="action-btn ghost">Re-cal</button>
     </div>
     <div class="action-row-sm">
       <button id="btn-merge-toggle" class="sm-btn">Auto-merge: ON</button>
-      <select id="felt-select" class="sm-btn sel-input">
+      <select id="felt-select" aria-label="Table felt colour" class="sm-btn sel-input">
         <option value="green">Green felt</option>
         <option value="blue">Blue felt</option>
         <option value="tan">Tan felt</option>
@@ -96,27 +97,30 @@
   <div id="demo-controls" class="bottom-bar demo-bar">
     <div class="power-row">
       <span class="power-icon">⚡</span>
-      <input type="range" id="power-slider" min="5" max="100" value="55" class="power-slider" />
+      <input type="range" id="power-slider" aria-label="Shot power" min="5" max="100" value="55" class="power-slider" />
       <span id="power-label" class="power-val">55%</span>
     </div>
     <div class="action-row">
-      <button id="btn-rack"      class="action-btn secondary">Rack</button>
-      <button id="btn-shoot"     class="action-btn primary">▶ Shoot!</button>
-      <button id="btn-new-game"  class="action-btn secondary">New</button>
+      <button id="btn-rack"      class="action-btn secondary" aria-label="Re-rack the balls">Rack</button>
+      <button id="btn-shoot"     class="action-btn primary" aria-label="Shoot the recommended shot">▶ Shoot!</button>
+      <button id="btn-new-game"  class="action-btn secondary" aria-label="Start a new game">New</button>
     </div>
     <div class="action-row-sm">
-      <button id="btn-toggle-ai" class="sm-btn accent">AI: ON</button>
-      <button id="btn-random"    class="sm-btn">Random</button>
-      <input type="number" id="ball-count" min="2" max="15" value="7" class="sm-input" />
+      <button id="btn-toggle-ai" class="sm-btn accent" aria-label="Toggle AI shot overlay">AI: ON</button>
+      <button id="btn-random"    class="sm-btn" aria-label="Random layout">Random</button>
+      <input type="number" id="ball-count" aria-label="Number of balls for random layout" inputmode="numeric" min="2" max="15" value="7" class="sm-input" />
     </div>
   </div>
+
+  <!-- ── First-load hint (dismissed on first touch/shot, remembered) ── -->
+  <div id="first-hint" class="first-hint hidden" role="note">Drag from the cue ball to aim, release to shoot</div>
 
 </div><!-- /#ar-overlay -->
 
 <!-- ═══════════════════════════════════════════════════
      Slide-up Info Panel
 ══════════════════════════════════════════════════ -->
-<aside id="info-panel" class="info-panel">
+<aside id="info-panel" class="info-panel" aria-label="Game information">
   <div class="panel-handle"></div>
 
   <!-- Game state -->
@@ -171,7 +175,7 @@
 
   <!-- Status text -->
   <div class="panel-card status-card">
-    <span id="status-text" class="status-full">Ready</span>
+    <span id="status-text" class="status-full" role="status" aria-live="polite">Ready</span>
   </div>
 
 </aside>
@@ -194,8 +198,10 @@
 
 <!-- Service worker registration -->
 <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
   }
 </script>
 

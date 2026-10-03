@@ -2,11 +2,16 @@
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Service Worker  —  8-Ball AR Pool Assistant
-//  Strategy: Cache-first for static assets; network-first for dynamic reqs.
+//  Strategy: stale-while-revalidate for same-origin GETs (instant + self-updating).
 //  Gives full offline capability once the app has been loaded once.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CACHE_NAME = '8ball-ar-v3';
+// Bump CACHE_VERSION on every deploy that changes a shipped file. The cache
+// name embeds it; `activate` deletes every other `8ball-ar-` cache, and fetch
+// uses stale-while-revalidate so even a missed bump heals on the next load.
+const CACHE_VERSION = '2026-10-02.1';
+const CACHE_PREFIX  = '8ball-ar-';
+const CACHE_NAME    = CACHE_PREFIX + CACHE_VERSION;
 
 // Static shell — all files that must be cached on install
 const SHELL_ASSETS = [
@@ -26,7 +31,6 @@ const SHELL_ASSETS = [
   './js/detection.js',
   './js/renderer.js',
   './js/app.js',
-  // Icons (may not exist yet — fetch will silently fail and we handle it)
   './icon-192.png',
   './icon-512.png',
 ];
@@ -39,7 +43,6 @@ self.addEventListener('install', (event) => {
       const results = await Promise.allSettled(
         SHELL_ASSETS.map((url) => cache.add(url).catch(() => {/* ok to miss */}))
       );
-      console.log('[SW] install — shell cached');
       return results;
     })
   );
@@ -53,53 +56,49 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => k !== CACHE_NAME)
+          .filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME)
           .map((k) => caches.delete(k))
       )
     ).then(() => {
-      console.log('[SW] activate — old caches removed');
       // Take control of all open clients immediately
       return self.clients.claim();
     })
   );
 });
 
-// ── Fetch: cache-first for local assets, network-first for others ───────────
+// ── Fetch: stale-while-revalidate for same-origin GETs ──────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Only handle GET requests
   if (request.method !== 'GET') return;
 
-  // Passthrough for cross-origin requests (CDNs, APIs, camera stream)
-  if (url.origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;               // CDNs, APIs
+  if (request.destination === 'video' || request.headers.has('range')) return;
 
-  // Camera / media streams — never intercept
-  if (url.pathname.includes('stream') || request.destination === 'video') return;
-
-  event.respondWith(cacheFirst(request));
+  event.respondWith(staleWhileRevalidate(request));
 });
 
-// ── Cache-first strategy ────────────────────────────────────────────────────
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
+async function staleWhileRevalidate(request) {
+  const cache  = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request, { ignoreSearch: request.mode === 'navigate' });
 
+  const network = fetch(request).then((res) => {
+    if (res.ok && res.type === 'basic') cache.put(request, res.clone());
+    return res;
+  });
+
+  if (cached) {
+    network.catch(() => {});          // background refresh; offline is fine
+    return cached;
+  }
   try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      // Clone before consuming body
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
+    return await network;
   } catch {
-    // Offline fallback: return the cached index.html for navigation requests
     if (request.mode === 'navigate') {
-      return caches.match('./index.html');
+      const shell = await cache.match('./index.html');
+      if (shell) return shell;
     }
-    return new Response('Offline', { status: 503 });
+    return new Response('Offline', { status: 503, statusText: 'Offline' });
   }
 }
 

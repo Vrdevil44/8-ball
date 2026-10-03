@@ -27,7 +27,7 @@ class GameState {
     this.message     = 'Break! Player 1 shoots.';
     this.foul        = false;
     this.ballInHand  = false;
-    this.ballInHandAfterScratch = false;
+    this.reRack      = false;                // set when 8 sunk on the break
   }
 
   get oppositePlayer() { return this.currentPlayer === 1 ? 2 : 1; }
@@ -67,133 +67,94 @@ class GameState {
     return [];
   }
 
-  // Called after a shot completes. newPocketed = Set<id> pocketed this shot.
+  // Called after a shot completes. newPocketed = Set<id> in pocketing order.
   // scratchCueBall = true if cue ball was pocketed.
+  //
+  // Rules (bar-style, no call-shot): table is open after the break; the first
+  // legal pot after the break assigns groups; an 8-ball pocketed before the
+  // shooter has cleared their group, or on a scratch, loses; 8 on the break
+  // re-racks (see this.reRack). First-contact fouls are NOT detected because
+  // the simulator only reports pocketed balls.
   processShot(newPocketed, scratchCueBall = false) {
-    this.foul = false;
-    this.ballInHand = false;
-    let madeOwnBall = false;
-    let madeCueBall = scratchCueBall;
+    this.foul = scratchCueBall;
+    this.ballInHand = scratchCueBall;
+    this.reRack = false;
 
-    if (scratchCueBall) {
-      this.foul = true;
-      this.ballInHand = true;
-    }
+    const priorPhase = this.phase;
+    const shooter = this.currentPlayer;
 
     for (const id of newPocketed) {
-      if (id === 0) continue; // cue ball handled separately
-      this.pocketed.add(id);
+      if (id !== 0) this.pocketed.add(id);
     }
 
-    // Phase transitions
-    if (this.phase === GAME_PHASE.BREAK) {
-      const solPocketed = this.solidIds.filter(id => newPocketed.has(id));
-      const strPocketed = this.stripeIds.filter(id => newPocketed.has(id));
-
-      if (newPocketed.has(8)) {
-        // 8 on break = re-rack or spot 8 (house rules: re-rack)
-        this.message = '8-ball on break! Re-rack.';
+    // ── 8-ball pocketed ──
+    if (newPocketed.has(8)) {
+      if (priorPhase === GAME_PHASE.BREAK) {
         this.reset();
+        this.reRack = true;
+        this.message = '8-ball on the break! Re-rack, Player 1 breaks.';
         return;
       }
-
-      if (!scratchCueBall && (solPocketed.length + strPocketed.length) > 0) {
-        // Assign groups based on more balls pocketed (or first pocketed if tie)
-        if (solPocketed.length > strPocketed.length) {
-          this.groups[1] = 'solids'; this.groups[2] = 'stripes';
-        } else if (strPocketed.length > solPocketed.length) {
-          this.groups[1] = 'stripes'; this.groups[2] = 'solids';
-        } else {
-          // Tie – keep open table for now
-          this.phase = GAME_PHASE.OPEN_TABLE;
-          this.message = `Table open. Player ${this.currentPlayer}'s turn.`;
-          return;
-        }
-        this.phase = GAME_PHASE.ASSIGNED_PLAY;
-        madeOwnBall = true;
-      } else {
-        this.phase = GAME_PHASE.OPEN_TABLE;
-      }
+      const legal = priorPhase === GAME_PHASE.SHOOTING_8 && !scratchCueBall;
+      this.winner = legal ? shooter : this.oppositePlayer;
+      this.phase = GAME_PHASE.GAME_OVER;
+      this.message = legal
+        ? `Player ${shooter} wins! 🎱`
+        : `Player ${this.winner} wins! (` +
+          (scratchCueBall ? 'scratch on the 8-ball)' : '8-ball pocketed early)');
+      return;
     }
 
-    if (this.phase === GAME_PHASE.OPEN_TABLE) {
-      const solPocketed = this.solidIds.filter(id => newPocketed.has(id));
-      const strPocketed = this.stripeIds.filter(id => newPocketed.has(id));
-
-      if (!scratchCueBall && (solPocketed.length + strPocketed.length) > 0) {
-        if (solPocketed.length >= strPocketed.length) {
-          this.groups[this.currentPlayer] = 'solids';
-          this.groups[this.oppositePlayer] = 'stripes';
-        } else {
-          this.groups[this.currentPlayer] = 'stripes';
-          this.groups[this.oppositePlayer] = 'solids';
-        }
-        this.phase = GAME_PHASE.ASSIGNED_PLAY;
+    // ── Group assignment: first legal pot after the break ──
+    let madeOwnBall = false;
+    if (priorPhase === GAME_PHASE.BREAK) {
+      this.phase = GAME_PHASE.OPEN_TABLE;
+      madeOwnBall = !scratchCueBall && [...newPocketed].some(id => id !== 0);
+    } else if (priorPhase === GAME_PHASE.OPEN_TABLE) {
+      const first = [...newPocketed].find(id => this.solidIds.includes(id) || this.stripeIds.includes(id));
+      if (!scratchCueBall && first !== undefined) {
+        const g = this.solidIds.includes(first) ? 'solids' : 'stripes';
+        this.groups[shooter] = g;
+        this.groups[this.oppositePlayer] = g === 'solids' ? 'stripes' : 'solids';
         madeOwnBall = true;
       }
+    } else if (this.groups[shooter]) {
+      const mine = this.groupIds(this.groups[shooter]);
+      madeOwnBall = !scratchCueBall && mine.some(id => newPocketed.has(id));
     }
 
-    if (this.phase === GAME_PHASE.ASSIGNED_PLAY) {
-      const myGroup = this.groupIds(this.currentGroup);
-      const myPocketed = myGroup.filter(id => newPocketed.has(id));
-      madeOwnBall = myPocketed.length > 0 && !scratchCueBall;
+    if (!(madeOwnBall && !this.foul)) this._switchTurn();
+    this._refreshPhase();
+    this._buildMessage(madeOwnBall && !this.foul);
+  }
 
-      // Check if player cleared their group
-      const remaining = myGroup.filter(id => !this.pocketed.has(id));
-      if (remaining.length === 0) {
-        this.phase = GAME_PHASE.SHOOTING_8;
-      }
-    }
-
-    if (this.phase === GAME_PHASE.SHOOTING_8) {
-      if (newPocketed.has(8)) {
-        if (scratchCueBall || this.foul) {
-          this.winner = this.oppositePlayer;
-          this.phase = GAME_PHASE.GAME_OVER;
-          this.message = `Player ${this.oppositePlayer} wins! (Foul on 8-ball)`;
-          return;
-        }
-        this.winner = this.currentPlayer;
-        this.phase = GAME_PHASE.GAME_OVER;
-        this.message = `Player ${this.currentPlayer} wins! 🎱`;
-        return;
-      }
-      // Shot missed 8-ball or pocketed wrong ball – foul
-      const wrongBalls = this.groupIds(this.currentGroup).filter(id => newPocketed.has(id));
-      if (wrongBalls.length > 0 && !scratchCueBall) {
-        // Accidentally pocketed own group ball when should shoot 8
-        this.foul = true;
-        this.ballInHand = true;
-      }
-    }
-
-    // Determine if turn continues or switches
-    if (madeOwnBall && !this.foul) {
-      this.message = `Player ${this.currentPlayer} continues!`;
-    } else {
-      this._switchTurn();
-    }
-
-    this._buildMessage();
+  // Phase for whoever shoots next: groups cleared → shooting the 8.
+  _refreshPhase() {
+    if (this.phase === GAME_PHASE.GAME_OVER || this.phase === GAME_PHASE.BREAK) return;
+    const g = this.currentGroup;
+    if (!g) { this.phase = GAME_PHASE.OPEN_TABLE; return; }
+    const left = this.groupIds(g).filter(id => !this.pocketed.has(id));
+    this.phase = left.length === 0 ? GAME_PHASE.SHOOTING_8 : GAME_PHASE.ASSIGNED_PLAY;
   }
 
   _switchTurn() {
     this.currentPlayer = this.oppositePlayer;
   }
 
-  _buildMessage() {
+  _buildMessage(continues = false) {
     if (this.phase === GAME_PHASE.GAME_OVER) return;
     const p = this.currentPlayer;
     const g = this.groups[p];
-    const foulStr = this.foul ? ' (Foul – ball in hand) ' : '';
+    const foulStr = this.foul ? ' (Foul – ball in hand)' : '';
+    const again = continues ? ' continues.' : ':';
     if (this.phase === GAME_PHASE.BREAK) {
       this.message = `Player ${p}: Break!`;
     } else if (this.phase === GAME_PHASE.OPEN_TABLE) {
-      this.message = `Player ${p}: Table open – sink any ball${foulStr}`;
+      this.message = `Player ${p}${again} Table open – sink any ball${foulStr}`;
     } else if (this.phase === GAME_PHASE.ASSIGNED_PLAY) {
-      this.message = `Player ${p}: Shoot ${g}${foulStr}`;
+      this.message = `Player ${p}${again} Shoot ${g}${foulStr}`;
     } else if (this.phase === GAME_PHASE.SHOOTING_8) {
-      this.message = `Player ${p}: Shoot the 8-ball!${foulStr}`;
+      this.message = `Player ${p}${again} Shoot the 8-ball!${foulStr}`;
     }
   }
 
